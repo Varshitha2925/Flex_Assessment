@@ -23,14 +23,23 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, []);
 
-  const rows = useMemo(() => {
+  // All reviews (flat) for stable channel list
+  const allReviews = useMemo(() => {
     if (!data) return [];
-    const arr = [];
+    const out = [];
     Object.values(data.listings).forEach(listing => {
-      listing.reviews.forEach(r => arr.push({ listingName: listing.listingName, ...r }));
+      listing.reviews.forEach(r => out.push({ listingName: listing.listingName, ...r }));
     });
-    return arr.filter(r => (!filterChannel || r.channel === filterChannel) && (!search || r.publicReview?.toLowerCase().includes(search.toLowerCase())));
-  }, [data, filterChannel, search]);
+    return out;
+  }, [data]);
+
+  // Filtered rows for table
+  const rows = useMemo(() => {
+    return allReviews.filter(r => (!filterChannel || r.channel === filterChannel) && (!search || r.publicReview?.toLowerCase().includes(search.toLowerCase())));
+  }, [allReviews, filterChannel, search]);
+
+  // Channel options derived from unfiltered set so they don't disappear after selecting
+  const allChannels = useMemo(() => [...new Set(allReviews.map(r => r.channel))], [allReviews]);
 
   async function toggleApproval(r) {
     if (r.approved) await unapproveReview(r.id); else await approveReview(r.id);
@@ -41,7 +50,8 @@ export default function DashboardPage() {
   if (error) return <div style={{padding:'2rem', color:'red'}}>Error: {error}</div>;
   if (!data) return null;
 
-  const channelOptions = [...new Set(rows.map(r=>r.channel))];
+  // channelOptions now comes from allChannels (kept for backward compatibility if needed)
+  const channelOptions = allChannels;
 
   return (
     <div className="dash-wrapper">
@@ -76,7 +86,7 @@ export default function DashboardPage() {
         <button onClick={load}>Reload</button>
       </div>
 
-      <div className="reviews-table-wrap">
+      <div className="reviews-table-wrap reviews-table-responsive">
         <table className="reviews-table">
           <thead>
             <tr>
