@@ -6,13 +6,13 @@ A full-stack prototype enabling managers to inspect property review performance,
 ## Tech Stack
 - Backend: Node.js + Express (ES Modules)
 - Frontend: React + Vite + React Router
-- Data: Mock Hostaway reviews JSON, simple JSON file for approvals
+- Data: Live Hostaway Reviews API (no mock fallback), in-memory approvals (prototype only)
 - Tooling: ESLint, Jest
 
 ## Key Design Decisions
 - Normalization groups reviews by `listingName` to simplify aggregation and UI grouping.
 - Aggregates precomputed server-side: average overall rating, per-category averages.
-- Approval persistence via lightweight JSON file (`backend/mock/approvals.json`) to avoid DB overhead for the prototype.
+- Approval persistence via lightweight in-memory store (prototype only).
 - API route `/api/reviews/hostaway` returns normalized structure quickly consumable by the dashboard.
 - Simple CSS-in-JS inline styles for speed; can be replaced with a design system later.
 
@@ -29,10 +29,10 @@ Install dependencies:
 cd backend && npm install
 cd ../frontend && npm install
 ```
-Run backend:
+Run backend (port 4000):
 ```bash
 cd backend
-npm run dev
+npm run dev # listens on :4000
 ```
 Run frontend (in new terminal):
 ```bash
@@ -111,3 +111,50 @@ Troubleshooting quick table:
 Security:
 - Do not commit the API key.
 - Rotate if exposed.
+
+### Express Strict Endpoint (This Repo Backend/server.js)
+
+If you use the local Express backend (`backend/server.js`), the route now operates in strict mode without any mock fallback:
+
+`GET http://localhost:3001/api/reviews/hostaway`
+
+Success (even if zero reviews):
+```
+{
+  "status": "success",
+  "count": 0,
+  "reviews": []
+}
+```
+
+Upstream non-OK (example 403):
+```
+{
+  "status": "error",
+  "message": "Upstream Hostaway error",
+  "upstreamStatus": 403
+}
+```
+
+Network / fetch failure:
+```
+{
+  "status": "error",
+  "message": "Failed to fetch Hostaway reviews",
+  "detail": "<error message>"
+}
+```
+
+Returned review objects shape (per requirement):
+```
+{
+  listingName: string,
+  guestName: string | null,
+  submittedAt: ISODate | null,
+  type: 'host-to-guest' | 'guest-to-host',
+  channel: string,
+  rating: number | null,
+  reviewCategory: [{ category: string, rating: number }],
+  publicReview: string
+}
+```
