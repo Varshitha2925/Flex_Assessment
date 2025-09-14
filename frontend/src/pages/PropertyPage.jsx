@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchHostawayReviews, fetchGoogleReviews } from '../services/api.js';
+import { PLACE_ID_MAP } from '../config/places.js';
 import Stars from '../components/Stars.jsx';
 import PropertyHero from '../components/PropertyHero.jsx';
 
@@ -11,6 +12,9 @@ export default function PropertyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [google, setGoogle] = useState(null);
+  const [placeIdInput, setPlaceIdInput] = useState('');
+  const [placeIdUsed, setPlaceIdUsed] = useState('');
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const approvedReviews = useMemo(() => (listing?.reviews || []).filter(r => r.approved), [listing]);
   const categories = listing?.aggregates?.categories || {};
@@ -33,21 +37,32 @@ export default function PropertyPage() {
     return () => { active = false; };
   }, [decoded]);
 
-  // Load Google reviews stub once listing name known.
+  // Auto-load Google reviews using mapping if available
   useEffect(() => {
     if (!listing?.listingName) return;
+    const mapped = PLACE_ID_MAP[listing.listingName];
+    if (!mapped) return; // no automatic mapping
     let active = true;
-    const pseudoPlaceId = listing.listingName.replace(/\s+/g, '_').slice(0, 40);
+    setGoogleLoading(true);
     (async () => {
-      try {
-        const g = await fetchGoogleReviews(pseudoPlaceId);
-        if (active) setGoogle(g);
-      } catch (_) {
-        // silent
+      const g = await fetchGoogleReviews(mapped);
+      if (active) {
+        setGoogle(g);
+        setPlaceIdUsed(mapped);
+        setGoogleLoading(false);
       }
     })();
     return () => { active = false; };
   }, [listing?.listingName]);
+
+  async function manualLoad() {
+    if (!placeIdInput.trim()) return;
+    setGoogleLoading(true);
+    const g = await fetchGoogleReviews(placeIdInput.trim());
+    setGoogle(g);
+    setPlaceIdUsed(placeIdInput.trim());
+    setGoogleLoading(false);
+  }
 
   if (loading) return <div style={{padding:'1rem'}}>Loading property...</div>;
   if (error) return <div style={{padding:'1rem', color:'red'}}>Error: {error}</div>;
@@ -93,7 +108,53 @@ export default function PropertyPage() {
           </div>
         </section>
 
-        {google && (
+        <section className="section-block" id="google" style={{scrollMarginTop:'80px'}}>
+          <h3>Google Reviews</h3>
+          <div style={{display:'flex', flexWrap:'wrap', gap:'0.5rem', alignItems:'center', marginBottom:'0.75rem'}}>
+            <input
+              placeholder="Enter Google Place ID"
+              value={placeIdInput}
+              onChange={e=>setPlaceIdInput(e.target.value)}
+              style={{flex:'1 1 260px', padding:'0.5rem 0.6rem', border:'1px solid var(--border)', borderRadius:8, font:'inherit'}}
+            />
+            <button
+              onClick={manualLoad}
+              disabled={googleLoading || !placeIdInput.trim()}
+              style={{background:'var(--accent)', color:'#fff', border:'none', padding:'0.55rem 0.9rem', borderRadius:8, font:'inherit', cursor:'pointer', fontWeight:600, opacity: googleLoading ? 0.6 : 1}}
+            >{googleLoading ? 'Loading...' : 'Load'}</button>
+            {placeIdUsed && <span style={{fontSize:'0.65rem', background:'#eef3f0', padding:'0.35rem 0.55rem', borderRadius:14}}>Using: {placeIdUsed.slice(0,10)}{placeIdUsed.length>10?'…':''}</span>}
+          </div>
+          {!google && !googleLoading && !placeIdUsed && (
+            <div style={{fontSize:'0.75rem', color:'var(--text-light)'}}>Provide a Place ID above or define a mapping in <code>config/places.js</code>.</div>
+          )}
+          {googleLoading && <div style={{fontSize:'0.8rem'}}>Fetching Google data…</div>}
+          {google && google.status === 'not-configured' && (
+            <div style={{fontSize:'0.8rem', background:'#fff7e6', border:'1px solid #ffe2ad', padding:'0.75rem 1rem', borderRadius:6}}>
+              API key not configured on this environment.
+            </div>
+          )}
+          {google && google.status === 'error' && (
+            <div style={{fontSize:'0.8rem', background:'#ffecec', border:'1px solid #ffb5b5', padding:'0.75rem 1rem', borderRadius:6}}>
+              Google fetch error: <strong>{google.code}</strong> – {google.message}
+            </div>
+          )}
+          {google && google.status === 'success' && (
+            <div style={{display:'flex', flexDirection:'column', gap:'0.75rem'}}>
+              <div style={{fontSize:'0.85rem'}}>Rating: <strong>{google.rating ?? '—'}</strong> ({google.userRatingsTotal ?? 0} total) <span style={{fontSize:'0.65rem', marginLeft:6, background:'#eef3f0', padding:'2px 6px', borderRadius:12}}>{google.mode}</span></div>
+              {google.reviews.length === 0 && <div style={{fontSize:'0.75rem', color:'var(--text-light)'}}>No Google reviews returned.</div>}
+              {google.reviews.map(rv => (
+                <div key={rv.id} className="review-card" style={{padding:'0.75rem 1rem'}}>
+                  <div style={{display:'flex', justifyContent:'space-between', marginBottom:4}}>
+                    <strong style={{fontSize:'0.75rem'}}>{rv.author}</strong>
+                    <span style={{fontSize:'0.7rem'}}>{rv.rating?.toFixed ? rv.rating.toFixed(1) : rv.rating}</span>
+                  </div>
+                  <p style={{fontSize:'0.75rem', lineHeight:1.3}}>{rv.text}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        {google && false && (
           <section className="section-block" id="google" style={{scrollMarginTop:'80px'}}>
             <h3>Google Reviews (Prototype)</h3>
             {google.status === 'not-configured' && (

@@ -6,16 +6,26 @@ export default function DashboardPage() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [errorDetails, setErrorDetails] = useState(null);
   const [filterChannel, setFilterChannel] = useState('');
   const [search, setSearch] = useState('');
 
   async function load() {
     try {
       setLoading(true);
+      setError(null);
       const d = await fetchHostawayReviews();
-      setData(d);
+      if (d && d.status === 'error') {
+        setError(`${d.code || 'ERROR'}: ${d.message}`);
+        setErrorDetails(d.details || null);
+        setData(null);
+      } else {
+        setData(d);
+        setErrorDetails(null);
+      }
     } catch (e) {
       setError(e.message);
+      setErrorDetails(null);
     } finally {
       setLoading(false);
     }
@@ -23,23 +33,23 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, []);
 
-  // All reviews (flat) for stable channel list
+  // Provide safe normalized shape if data missing to prevent crashes
+  const safeListings = data?.listings || {};
+
   const allReviews = useMemo(() => {
-    if (!data) return [];
+    if (!data || !data.listings) return [];
     const out = [];
-    Object.values(data.listings).forEach(listing => {
-      listing.reviews.forEach(r => out.push({ listingName: listing.listingName, ...r }));
+    Object.values(safeListings).forEach(listing => {
+      (listing.reviews || []).forEach(r => out.push({ listingName: listing.listingName, ...r }));
     });
     return out;
-  }, [data]);
+  }, [data, safeListings]);
 
-  // Filtered rows for table
   const rows = useMemo(() => {
     return allReviews.filter(r => (!filterChannel || r.channel === filterChannel) && (!search || r.publicReview?.toLowerCase().includes(search.toLowerCase())));
   }, [allReviews, filterChannel, search]);
 
-  // Channel options derived from unfiltered set so they don't disappear after selecting
-  const allChannels = useMemo(() => [...new Set(allReviews.map(r => r.channel))], [allReviews]);
+  const allChannels = useMemo(() => [...new Set(allReviews.map(r => r.channel).filter(Boolean))], [allReviews]);
 
   async function toggleApproval(r) {
     if (r.approved) await unapproveReview(r.id); else await approveReview(r.id);
@@ -47,10 +57,20 @@ export default function DashboardPage() {
   }
 
   if (loading) return <div style={{padding:'2rem'}}>Loading reviews...</div>;
-  if (error) return <div style={{padding:'2rem', color:'red'}}>Error: {error}</div>;
+  if (error) return (
+    <div style={{padding:'2rem'}}>
+      <div style={{color:'red', marginBottom:'1rem'}}>Error loading Hostaway reviews: {error}</div>
+      {errorDetails && (
+        <details style={{marginBottom:'1rem'}}>
+          <summary>Diagnostics</summary>
+          <pre style={{whiteSpace:'pre-wrap', fontSize:12, background:'#222', color:'#eee', padding:'0.75rem', borderRadius:4}}>{JSON.stringify(errorDetails, null, 2)}</pre>
+        </details>
+      )}
+      <button onClick={load}>Retry</button>
+    </div>
+  );
   if (!data) return null;
 
-  // channelOptions now comes from allChannels (kept for backward compatibility if needed)
   const channelOptions = allChannels;
 
   return (
@@ -60,17 +80,17 @@ export default function DashboardPage() {
         <div className="stat-cards">
           <div className="stat-card">
             <div className="stat-label">Listings</div>
-            <div className="stat-value">{data.meta.listingCount}</div>
+            <div className="stat-value">{data.meta?.listingCount ?? 0}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Reviews</div>
-            <div className="stat-value">{data.meta.reviewCount}</div>
+            <div className="stat-value">{data.meta?.reviewCount ?? 0}</div>
           </div>
           <div className="stat-card">
             <div className="stat-label">Approved</div>
             <div className="stat-value">{rows.filter(r=>r.approved).length}</div>
           </div>
-          <div className="stat-card">
+            <div className="stat-card">
             <div className="stat-label">Pending</div>
             <div className="stat-value">{rows.filter(r=>!r.approved).length}</div>
           </div>

@@ -85,3 +85,29 @@ npm test
 
 ## License
 Prototype – internal assessment use.
+
+## Hostaway Live Reviews Integration (Strict Mode)
+
+Live Hostaway API is now REQUIRED. Mock fallback removed.
+
+Environment variables (root `.env` and Vercel project settings):
+```
+HOSTAWAY_ACCOUNT_ID=61148
+HOSTAWAY_API_KEY=your_real_rotated_api_key_here
+```
+
+Behavior (strict):
+- If credentials missing -> 400 `{ status: 'error', message: 'MISSING_CREDENTIALS' }`.
+- If upstream non-200 -> 502 `{ status: 'error', message: 'UPSTREAM_STATUS_<code>' }`.
+- On success -> `{ status:'success', mode:'live', listings, meta }`.
+
+No more `mode: mock` responses.
+
+Troubleshooting quick table:
+- 400 MISSING_CREDENTIALS: add env vars & restart / redeploy.
+- 502 UPSTREAM_STATUS_401: invalid/expired API key.
+- 502 UPSTREAM_STATUS_5xx: Hostaway server issue; retry later.
+
+Security:
+- Do not commit the API key.
+- Rotate if exposed.

@@ -6,15 +6,22 @@ import { fileURLToPath } from 'url';
 export function loadRawHostaway() {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  // Reuse original mock data from backend folder if present, else fallback to colocated copy (optional future)
   const candidatePaths = [
     path.join(__dirname, '..', '..', '..', 'backend', 'mock', 'hostawayReviews.json'),
     path.join(__dirname, '..', 'mock', 'hostawayReviews.json')
   ];
   const file = candidatePaths.find(p => fs.existsSync(p));
-  if (!file) throw new Error('Mock reviews file not found in expected locations');
-  const raw = JSON.parse(fs.readFileSync(file, 'utf-8'));
-  return raw.result || [];
+  if (!file) { console.warn('[mock] serverless hostawayReviews.json missing'); return []; }
+  let text='';
+  try { text = fs.readFileSync(file, 'utf-8'); } catch (e) { console.warn('[mock] read error', e.message); return []; }
+  if (!text.trim()) { console.warn('[mock] empty hostawayReviews.json'); return []; }
+  try {
+    const raw = JSON.parse(text);
+    if (Array.isArray(raw.result)) return raw.result;
+    if (Array.isArray(raw)) return raw;
+    return [];
+  } catch (e) {
+    console.warn('[mock] parse error', e.message); return []; }
 }
 
 export function normalizeHostawayReviews(reviews) {
