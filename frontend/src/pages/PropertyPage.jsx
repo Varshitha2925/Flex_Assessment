@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchHostawayReviews, fetchGoogleReviews } from '../services/api.js';
-import { PLACE_ID_MAP } from '../config/places.js';
 import Stars from '../components/Stars.jsx';
 import PropertyHero from '../components/PropertyHero.jsx';
 
@@ -12,9 +11,6 @@ export default function PropertyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [google, setGoogle] = useState(null);
-  const [placeIdInput, setPlaceIdInput] = useState('');
-  const [placeIdUsed, setPlaceIdUsed] = useState('');
-  const [googleLoading, setGoogleLoading] = useState(false);
 
   const approvedReviews = useMemo(() => (listing?.reviews || []).filter(r => r.approved), [listing]);
   const categories = listing?.aggregates?.categories || {};
@@ -37,32 +33,16 @@ export default function PropertyPage() {
     return () => { active = false; };
   }, [decoded]);
 
-  // Auto-load Google reviews using mapping if available
+  // Auto-load Google reviews once listing is available using default backend place ID
   useEffect(() => {
-    if (!listing?.listingName) return;
-    const mapped = PLACE_ID_MAP[listing.listingName];
-    if (!mapped) return; // no automatic mapping
+    if (!listing) return;
     let active = true;
-    setGoogleLoading(true);
     (async () => {
-      const g = await fetchGoogleReviews(mapped);
-      if (active) {
-        setGoogle(g);
-        setPlaceIdUsed(mapped);
-        setGoogleLoading(false);
-      }
+      const g = await fetchGoogleReviews();
+      if (active) setGoogle(g);
     })();
     return () => { active = false; };
-  }, [listing?.listingName]);
-
-  async function manualLoad() {
-    if (!placeIdInput.trim()) return;
-    setGoogleLoading(true);
-    const g = await fetchGoogleReviews(placeIdInput.trim());
-    setGoogle(g);
-    setPlaceIdUsed(placeIdInput.trim());
-    setGoogleLoading(false);
-  }
+  }, [listing]);
 
   if (loading) return <div style={{padding:'1rem'}}>Loading property...</div>;
   if (error) return <div style={{padding:'1rem', color:'red'}}>Error: {error}</div>;
@@ -110,29 +90,6 @@ export default function PropertyPage() {
 
         <section className="section-block" id="google" style={{scrollMarginTop:'80px'}}>
           <h3>Google Reviews</h3>
-          <div style={{display:'flex', flexWrap:'wrap', gap:'0.5rem', alignItems:'center', marginBottom:'0.75rem'}}>
-            <input
-              placeholder="Enter Google Place ID"
-              value={placeIdInput}
-              onChange={e=>setPlaceIdInput(e.target.value)}
-              style={{flex:'1 1 260px', padding:'0.5rem 0.6rem', border:'1px solid var(--border)', borderRadius:8, font:'inherit'}}
-            />
-            <button
-              onClick={manualLoad}
-              disabled={googleLoading || !placeIdInput.trim()}
-              style={{background:'var(--accent)', color:'#fff', border:'none', padding:'0.55rem 0.9rem', borderRadius:8, font:'inherit', cursor:'pointer', fontWeight:600, opacity: googleLoading ? 0.6 : 1}}
-            >{googleLoading ? 'Loading...' : 'Load'}</button>
-            {placeIdUsed && <span style={{fontSize:'0.65rem', background:'#eef3f0', padding:'0.35rem 0.55rem', borderRadius:14}}>Using: {placeIdUsed.slice(0,10)}{placeIdUsed.length>10?'…':''}</span>}
-          </div>
-          {!google && !googleLoading && !placeIdUsed && (
-            <div style={{fontSize:'0.75rem', color:'var(--text-light)'}}>Provide a Place ID above or define a mapping in <code>config/places.js</code>.</div>
-          )}
-          {googleLoading && <div style={{fontSize:'0.8rem'}}>Fetching Google data…</div>}
-          {google && google.status === 'not-configured' && (
-            <div style={{fontSize:'0.8rem', background:'#fff7e6', border:'1px solid #ffe2ad', padding:'0.75rem 1rem', borderRadius:6}}>
-              API key not configured on this environment.
-            </div>
-          )}
           {google && google.status === 'error' && (
             <div style={{fontSize:'0.8rem', background:'#ffecec', border:'1px solid #ffb5b5', padding:'0.75rem 1rem', borderRadius:6}}>
               Google fetch error: <strong>{google.code}</strong> – {google.message}
@@ -152,6 +109,9 @@ export default function PropertyPage() {
                 </div>
               ))}
             </div>
+          )}
+          {!google && (
+            <div style={{fontSize:'0.75rem', color:'var(--text-light)'}}>Google reviews not available.</div>
           )}
         </section>
         {google && false && (

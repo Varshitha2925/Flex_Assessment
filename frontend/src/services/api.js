@@ -1,36 +1,15 @@
-let __loggedHostawayOnce = false;
-
+// Hostaway integration temporarily removed to prevent proxy errors.
+// Stubs return an empty dataset with stable shape.
 export async function fetchHostawayReviews() {
-  const res = await fetch('/api/reviews/hostaway');
-  let body = null;
-  try {
-    body = await res.json();
-  } catch (_) {
-    body = null;
-  }
-  if (!res.ok) {
-    const code = body?.code || ('HTTP_' + res.status);
-    return { status: 'error', code, message: body?.message || 'Failed to load reviews', details: body };
-  }
-  const data = body;
-  if (!__loggedHostawayOnce) {
-    console.log('[DEBUG] Hostaway reviews payload:', data);
-    __loggedHostawayOnce = true;
-  }
-  return data;
+  return {
+    status: 'success',
+    listings: {},
+    meta: { listingCount: 0, reviewCount: 0 }
+  };
 }
 
-export async function approveReview(id) {
-  const res = await fetch(`/api/reviews/approvals/${id}`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to approve review');
-  return res.json();
-}
-
-export async function unapproveReview(id) {
-  const res = await fetch(`/api/reviews/approvals/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to unapprove review');
-  return res.json();
-}
+export async function approveReview() { return { status: 'noop' }; }
+export async function unapproveReview() { return { status: 'noop' }; }
 
 export async function fetchGoogleReviews(placeId) {
   const url = placeId ? `/api/reviews/google?placeId=${encodeURIComponent(placeId)}` : '/api/reviews/google';

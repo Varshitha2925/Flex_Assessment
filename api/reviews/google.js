@@ -1,6 +1,16 @@
 import 'dotenv/config';
-// Google Reviews endpoint (strict mode).
-// Returns explicit errors (no stub fallback). Caller must handle status==='error'.
+
+const PLACE_IDS = [
+  'ChIJN1t_tDeuEmsRUsoyG83frY4', // Sydney sample
+  'ChIJE9on3F3HwoAR9AhGJW_fL-I', // Los Angeles City Hall
+  'ChIJIQBpAG2ahYAR_6128GcTUEo', // San Francisco
+  'ChIJOwg_06VPwokRYv534QaPC8g', // New York City
+  'ChIJzxcfI6qAa4cR1jaKJ_j0jhE'  // Denver
+];
+
+function pickPlaceId() {
+  return PLACE_IDS[Math.floor(Math.random() * PLACE_IDS.length)];
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -9,48 +19,42 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET') return res.status(405).json({ status: 'error', message: 'Method not allowed' });
 
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY; // not used yet, placeholder
-  if (apiKey) {
-    console.log('[google endpoint] API key detected (len=%d, starts=%s...)', apiKey.length, apiKey.slice(0,5));
-  } else {
-    console.log('[google endpoint] No API key found in process.env');
-  }
-  const placeId = req.query.placeId || req.query.place_id; // allow either
-
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  const PLACE_ID = pickPlaceId();
   if (!apiKey) {
-    return res.json({
-      status: 'not-configured',
-      message: 'Set GOOGLE_PLACES_API_KEY to enable live Google reviews',
-      reviews: [],
-      rating: null,
-      userRatingsTotal: 0
-    });
+    return res.status(400).json({ status: 'error', code: 'NO_API_KEY', message: 'GOOGLE_PLACES_API_KEY missing' });
   }
 
-  if (!placeId) {
-    return res.status(400).json({ status: 'error', message: 'Missing placeId query parameter' });
-  }
+  const fields = ['rating','user_ratings_total','reviews'].join(',');
+  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(PLACE_ID)}&fields=${fields}&key=${apiKey}`;
+    let json;
+    try {
+      const r = await fetch(url);
+      const text = await r.text();
+      try {
+        json = JSON.parse(text);
+      } catch (parseErr) {
+        return res.status(502).json({ status: 'error', code: 'PARSE', message: 'Invalid JSON from Google Places', raw: text.slice(0,400) });
+      }
+      if (!r.ok) {
+        return res.status(r.status).json({ status: 'error', code: 'HTTP_'+r.status, message: 'Non-200 from Google Places', upstream: json });
+      }
+      if (json.status !== 'OK') {
+        return res.status(502).json({ status: 'error', code: json.status || 'GOOGLE_ERROR', message: json.error_message || 'Google Places returned non-OK status', upstream: json });
+      }
+    } catch (e) {
+      return res.status(502).json({ status: 'error', code: 'NETWORK', message: 'Network error contacting Google Places', detail: e.message });
+    }
 
-  const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(placeId)}&fields=rating,user_ratings_total,reviews&key=${apiKey}`;
-  let data;
-  try {
-    const resp = await fetch(url);
-    data = await resp.json();
-  } catch (networkErr) {
-    return res.status(502).json({ status: 'error', code: 'NETWORK_ERROR', message: 'Failed to reach Google Places API', detail: networkErr.message });
-  }
-  if (!data || data.status !== 'OK') {
-    return res.status(502).json({ status: 'error', code: data?.status || 'UNKNOWN', message: data?.error_message || 'Google Places API returned non-OK status' });
-  }
-  const result = data.result || {};
+  const result = json.result || {};
   const rating = result.rating ?? null;
   const userRatingsTotal = result.user_ratings_total ?? 0;
-  const reviews = (result.reviews || []).map(r => ({
-    id: String(r.time),
-    author: r.author_name,
-    rating: r.rating,
-    time: r.time,
-    text: (r.text || '').slice(0, 400)
+  const reviews = (result.reviews || []).map(rv => ({
+    id: String(rv.time),
+    author: rv.author_name,
+    rating: rv.rating,
+    time: rv.time,
+    text: (rv.text || '').slice(0, 400)
   }));
-  return res.json({ status: 'success', mode: 'live', placeId, rating, userRatingsTotal, reviews });
+  return res.json({ status: 'success', mode: 'live', placeId: PLACE_ID, rating, userRatingsTotal, reviews });
 }

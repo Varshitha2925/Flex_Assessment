@@ -67,7 +67,57 @@ Because Vercel functions have read-only filesystem (except temporary `/tmp`) and
 See `backend/src/normalize.js`. Transforms raw Hostaway JSON into grouped listings with aggregate metrics for efficient frontend rendering.
 
 ## Google Reviews Exploration
-Potential integration via Google Places API `Place Details` or `Place Reviews` (new APIs may restrict review access). Requires API key + Place ID per property. Not implemented in prototype. Consider caching responses and respecting quota/exponential backoff.
+This prototype now provides a hybrid approach:
+
+1. Live Attempt (if `GOOGLE_PLACES_API_KEY` present):
+  - Endpoint: `GET /api/reviews/google`
+  - Calls Google Places Details API with fields: `rating,user_ratings_total,reviews` for a fixed Place ID (`ChIJN1t_tDeuEmsRUsoyG83frY4`).
+  - On success returns `{ status:'success', mode:'live', placeId, rating, userRatingsTotal, reviews[] }`.
+2. Static Fallback (no key / upstream error):
+  - Returns curated sample payload: `{ status:'success', mode:'static-no-key' | 'fallback' | 'fallback-network', ... }` with deterministic reviews.
+
+### Current Random Place ID Behavior
+The running implementation selects one random Place ID from a predefined list on *each request* to `/api/reviews/google`. This is purely for demonstration diversity. To lock to a single property, replace the `PLACE_IDS` array with a one-element array or compute from your listing metadata.
+
+### Feasibility Findings
+| Aspect | Notes |
+|--------|------|
+| API Used | Places Details (`/maps/api/place/details/json`) |
+| Reviews Returned | Google returns up to 5 “most relevant” reviews; full pagination not available via standard Places Details API. |
+| Required Fields Param | `fields=rating,user_ratings_total,reviews` keeps response lean and billable units minimal. |
+| Quotas/Billing | Requires billing-enabled API key; each details request consumes Places Details quota. |
+| Localization | Add `&language=<code>` to request localized review snippets. |
+| Caching | Short-term caching recommended to reduce costs (not implemented—prototype only). |
+| TOS Considerations | Must attribute Google; avoid storing reviews long-term beyond permitted caching window; do not alter review text. |
+
+### Environment Variable
+```
+GOOGLE_PLACES_API_KEY=your_key_here
+```
+
+### Response Shape (live)
+```
+{
+  status: 'success',
+  mode: 'live',
+  placeId: 'ChIJN1t_tDeuEmsRUsoyG83frY4',
+  rating: Number | null,
+  userRatingsTotal: Number,
+  reviews: [ { id, author, rating, time, text } ]
+}
+```
+
+### Response Shape (fallback/static)
+`mode` will be one of: `static-no-key`, `fallback`, `fallback-network`.
+
+### Future Enhancements
+- Allow dynamic Place ID per property (mapping file or DB column).
+- Persist minimal cache layer (Redis) with TTL.
+- Add attribution snippet and link to Google Maps place page.
+- Add language switch for localized content.
+
+### Rationale for Static Fallback
+Ensures a consistent UI demo when an API key is not configured or quota is exceeded, lowering friction for assessment reviewers.
 
 ## Future Enhancements
 - Add authentication for approvals
